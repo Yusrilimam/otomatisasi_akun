@@ -420,93 +420,124 @@ def handle_existing_account_popup(d, timeout=15):
 
 def set_birthday(d, min_age=18, max_age=30):
     print("Set birthday dengan metode 'Enter age instead'...")
-    time.sleep(2)  # Tunggu halaman birthday load sempurna
+    time.sleep(3)  # Tunggu halaman birthday load sempurna
 
-    # Coba klik tombol Next dengan beberapa metode
-    next_clicked = False
-    
-    # 1. Coba dengan text
+    def verify_birthday_page():
+        """Memastikan kita berada di halaman birthday"""
+        return d(text="Add your birthday").exists or \
+               d(textContains="Add your birthday").exists
+
+    # Verifikasi halaman birthday
+    if not verify_birthday_page():
+        print("Tidak berada di halaman birthday!")
+        return False
+
+    # 1. Klik tombol Next
+    print("Langkah 1: Mengklik tombol Next biru...")
     if d(text="Next").exists:
         d(text="Next").click()
-        next_clicked = True
-    # 2. Coba dengan resource-id
-    elif d(resourceId="com.instagram.lite:id/next_button").exists:
-        d(resourceId="com.instagram.lite:id/next_button").click()
-        next_clicked = True
-    # 3. Coba dengan koordinat yang sesuai dengan tombol Next di halaman birthday
     else:
-        print("Mencoba klik Next dengan koordinat...")
-        d.click(450, 930)  # Koordinat tombol Next di halaman birthday
-        next_clicked = True
-
+        # Koordinat tombol Next biru di bagian bawah
+        d.click(450, 930)
+    
+    # Tunggu popup muncul
     time.sleep(2)
-
-    # Cek apakah popup "Enter your real birthday" muncul
-    if d(textContains="Enter your real birthday").exists:
-        print("Pop up 'Enter your real birthday' terdeteksi")
-        # Coba klik OK dengan beberapa metode
-        if d(text="OK").exists:
-            d(text="OK").click()
-        elif d(text="Okay").exists:
-            d(text="Okay").click()
+    print("Menunggu popup 'Enter your real birthday'...")
+    
+    # 2. Tunggu dan handle popup
+    popup_handled = False
+    attempts = 0
+    while attempts < 5 and not popup_handled:
+        if d(textContains="Enter your real birthday").exists:
+            print("Langkah 2: Popup terdeteksi, mengklik OK...")
+            if d(text="OK").exists:
+                d(text="OK").click()
+            else:
+                d.click(450, 780)  # Koordinat tombol OK
+            popup_handled = True
         else:
-            # Koordinat untuk tombol OK
-            d.click(450, 640)
-        time.sleep(1)
-    
-    # Cari dan klik tombol "Enter age instead"
-    enter_age_clicked = False
-    
-    # 1. Coba dengan text
-    if d(text="Enter age instead").exists:
-        print("Menemukan tombol 'Enter age instead' by text")
-        d(text="Enter age instead").click()
-        enter_age_clicked = True
-    # 2. Coba dengan contains text
-    elif d(textContains="Enter age").exists:
-        print("Menemukan tombol 'Enter age instead' by contains text")
-        d(textContains="Enter age").click()
-        enter_age_clicked = True
-    # 3. Coba dengan koordinat spesifik untuk tombol "Enter age instead"
-    else:
-        print("Mencoba klik 'Enter age instead' dengan koordinat...")
-        # Koordinat untuk tombol Enter age instead
-        d.click(450, 840)
-        enter_age_clicked = True
-    
-    time.sleep(2)
+            print("Menunggu popup muncul...")
+            time.sleep(1)
+            attempts += 1
 
-    # Isi usia
-    if d(className="android.widget.MultiAutoCompleteTextView").exists:
-        age_field = d(className="android.widget.MultiAutoCompleteTextView")
-        age = str(random.randint(min_age, max_age))
-        try:
-            age_field.clear_text()
-            time.sleep(0.5)
-            age_field.set_text(age)
-            print(f"Berhasil mengisi usia: {age}")
-        except Exception as e:
-            print(f"Error saat mengisi usia: {e}")
-            # Fallback menggunakan send_keys
-            d.send_keys(age)
-            print(f"Mencoba mengisi usia dengan send_keys: {age}")
-    else:
-        print("Field usia tidak ditemukan!")
+    if not popup_handled:
+        print("Popup tidak muncul setelah klik Next!")
+        return False
+
+    # Tunggu popup hilang dan tombol "Enter age instead" muncul
+    time.sleep(2)
+    print("Menunggu tombol 'Enter age instead' muncul...")
+
+    # 3. Klik "Enter age instead"
+    enter_age_clicked = False
+    attempts = 0
+    while attempts < 5 and not enter_age_clicked:
+        if d(text="Enter age instead").exists:
+            print("Langkah 3: Mengklik 'Enter age instead' by text")
+            d(text="Enter age instead").click()
+            enter_age_clicked = True
+        elif d(textContains="Enter age").exists:
+            print("Langkah 3: Mengklik 'Enter age instead' by contains")
+            d(textContains="Enter age").click()
+            enter_age_clicked = True
+        else:
+            print("Menunggu tombol 'Enter age instead' muncul...")
+            time.sleep(1)
+            attempts += 1
+
+    if not enter_age_clicked:
+        print("Gagal menemukan tombol 'Enter age instead'!")
         return False
 
     time.sleep(2)
 
-    # Klik Next setelah isi usia
+    # 4. Tunggu dan isi field usia
+    print("Menunggu field usia muncul...")
+    age_input_success = False
+    attempts = 0
+    
+    while attempts < 5 and not age_input_success:
+        if d(className="android.widget.MultiAutoCompleteTextView").exists:
+            field = d(className="android.widget.MultiAutoCompleteTextView")
+            age = str(random.randint(min_age, max_age))
+            try:
+                field.click()
+                time.sleep(0.5)
+                field.clear_text()
+                time.sleep(0.5)
+                field.set_text(age)
+                print(f"Langkah 4: Berhasil mengisi usia: {age}")
+                age_input_success = True
+            except Exception as e:
+                print(f"Error saat input usia: {e}")
+                d.send_keys(age)
+                age_input_success = True
+        else:
+            print("Menunggu field usia muncul...")
+            time.sleep(1)
+            attempts += 1
+
+    if not age_input_success:
+        print("Gagal mengisi usia!")
+        return False
+
+    time.sleep(2)
+
+    # 5. Klik Next final
+    print("Langkah 5: Mengklik Next final...")
     if d(text="Next").exists:
         d(text="Next").click()
-    elif d(resourceId="com.instagram.lite:id/next_button").exists:
-        d(resourceId="com.instagram.lite:id/next_button").click()
     else:
-        # Koordinat untuk tombol Next setelah isi usia
         d.click(450, 930)
 
-    print("Proses set birthday selesai")
-    return True
+    # Verifikasi berhasil pindah halaman
+    time.sleep(3)
+    if not verify_birthday_page():
+        print("Berhasil menyelesaikan proses birthday!")
+        return True
+    
+    print("Gagal menyelesaikan proses birthday")
+    return False
 
 def check_instagram_lite_installed():
     print("Mengecek apakah Instagram Lite sudah terinstall...")
@@ -659,7 +690,8 @@ def register_instagram_lite(email, fullname, password):
         next_clicked = True
     if next_clicked:
         print("Tombol Next berhasil diklik, menunggu halaman berikutnya...")
-        time.sleep(2)
+        print("Menunggu 15 detik untuk email verifikasi masuk...")
+        time.sleep(15)
     # WAJIB: Tunggu dan handle popup jika muncul
         handled = handle_existing_account_popup(d, timeout=10)
         if handled:
@@ -667,10 +699,8 @@ def register_instagram_lite(email, fullname, password):
             time.sleep(1)
         else:
             print("Tidak ada pop-up email terdaftar yang muncul, melanjutkan...")
-        inspect_ui_elements(d)
     else:
         print("Gagal menemukan tombol Next!")
-        inspect_ui_elements(d)
         return
 
     print("Cek apakah langsung masuk ke halaman verifikasi kode...")
