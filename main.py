@@ -206,8 +206,8 @@ def handle_email_verification(d, max_attempts=3, kode_start_time=None):
         print(f"Set kode_start_time ke: {kode_start_time}")
     
     # Deteksi halaman verifikasi dengan timeout lebih pendek
-    for attempt in range(30):  # Kurangi dari 60 ke 30
-        print(f"Attempt {attempt + 1}: Mencari halaman verifikasi...")
+    for attempt in range(15):  # Kurangi timeout menjadi 30 detik
+        print(f"Percobaan {attempt + 1}: Mencari halaman verifikasi...")
         indicators = [
             d(textContains="confirmation").exists,
             d(textContains="verification").exists,
@@ -224,29 +224,33 @@ def handle_email_verification(d, max_attempts=3, kode_start_time=None):
             verification_detected = True
             print("Halaman verifikasi email terdeteksi!")
             break
-        time.sleep(2)  # Increase sleep time
+        time.sleep(2)
         
     if not verification_detected:
-        print("Halaman verifikasi tidak terdeteksi setelah 60 detik")
+        print("Halaman verifikasi tidak terdeteksi setelah 30 detik")
         return False
-
-    time.sleep(3)
 
     exclude_codes = []
     for attempt in range(max_attempts):
         print(f"Percobaan verifikasi kode ke-{attempt+1}...")
-        verification_code = None
         
-        # Ambil kode verifikasi dengan timeout yang lebih realistis
+        # Tambahkan jeda sebelum mencoba mendapatkan kode
+        if attempt > 0:
+            print("Menunggu 10 detik sebelum mencoba lagi...")
+            time.sleep(10)
+        
+        # Ambil kode verifikasi dengan timeout yang lebih pendek
         print("Mencoba mengambil kode verifikasi dari email...")
         verification_code = get_verification_code_from_email_gmail_api(
-            timeout=60,  # Kurangi timeout
-            exclude_codes=exclude_codes, 
+            timeout=60,  # 1 menit timeout
+            exclude_codes=exclude_codes,
             start_time=kode_start_time
         )
         
-        if not verification_code:
-            print("Tidak dapat mengambil kode dari email, mencoba input manual...")
+        if verification_code:
+            print(f"Kode verifikasi ditemukan: {verification_code}")
+        else:
+            print("Tidak dapat mengambil kode otomatis, mencoba input manual...")
             verification_code = manual_input_verification_code()
             
         if not verification_code:
@@ -256,7 +260,7 @@ def handle_email_verification(d, max_attempts=3, kode_start_time=None):
         exclude_codes.append(verification_code)
         print(f"Memasukkan kode verifikasi: {verification_code}")
 
-        # Isi field kode dengan prioritas yang lebih baik
+        # Isi field kode
         success = False
         
         # Coba resource ID yang paling umum dulu
@@ -267,7 +271,6 @@ def handle_email_verification(d, max_attempts=3, kode_start_time=None):
         
         for resource_id in primary_resource_ids:
             if d(resourceId=resource_id).exists:
-                print(f"Menemukan field dengan resource ID: {resource_id}")
                 try:
                     code_field = d(resourceId=resource_id)
                     code_field.click()
@@ -276,104 +279,71 @@ def handle_email_verification(d, max_attempts=3, kode_start_time=None):
                     time.sleep(0.5)
                     code_field.set_text(verification_code)
                     time.sleep(2)
-                    current_text = code_field.get_text()
-                    if verification_code in current_text or len(current_text.strip()) == 6:
-                        print("Kode berhasil dimasukkan!")
-                        success = True
-                        break
+                    success = True
+                    break
                 except Exception as e:
                     print(f"Error pada resource ID {resource_id}: {e}")
                     continue
 
-        # Jika gagal, coba EditText
         if not success:
-            print("Mencari melalui EditText...")
+            # Coba EditText
             edit_texts = d(className="android.widget.EditText")
-            print(f"Ditemukan {edit_texts.count} EditText")
-            for i in range(min(edit_texts.count, 3)):  # Batasi hanya 3 pertama
-                try:
-                    field = edit_texts[i]
-                    field.click()
-                    time.sleep(0.5)
-                    field.clear_text()
-                    time.sleep(0.5)
-                    field.set_text(verification_code)
-                    time.sleep(1)
-                    updated_text = field.get_text()
-                    if verification_code in updated_text or len(updated_text.strip()) == 6:
-                        print(f"Berhasil mengisi kode di EditText {i}")
+            if edit_texts.exists:
+                for i in range(min(edit_texts.count, 3)):
+                    try:
+                        field = edit_texts[i]
+                        field.click()
+                        time.sleep(0.5)
+                        field.clear_text()
+                        time.sleep(0.5)
+                        field.set_text(verification_code)
+                        time.sleep(1)
                         success = True
                         break
-                except Exception as e:
-                    print(f"Error pada EditText {i}: {e}")
-                    continue
+                    except Exception as e:
+                        print(f"Error pada EditText {i}: {e}")
+                        continue
 
-        # Fallback ke koordinat jika masih gagal
         if not success:
-            print("Mencoba input dengan koordinat...")
+            # Fallback ke koordinat
             x, y = 450, 180
             d.click(x, y)
             time.sleep(1)
-            # Clear field
-            d.press("ctrl+a")
-            time.sleep(0.5)
-            d.press("del")
-            time.sleep(0.5)
-            # Input kode
-            for char in verification_code:
-                d.send_keys(char)
-                time.sleep(0.2)
+            d.send_keys(verification_code)
             time.sleep(1)
-            print("Kode dimasukkan menggunakan koordinat")
             success = True
 
         if success:
             # Klik tombol Next
-            print("Mengklik tombol Next...")
-            
-            # Coba tombol berdasarkan teks dulu
             if d(text="Next").exists:
                 d(text="Next").click()
             elif d(textContains="Next").exists:
                 d(textContains="Next").click()
             else:
-                # Fallback ke koordinat
                 d.click(450, 400)
             
-            print("Tombol Next diklik, menunggu response...")
+            print("Menunggu response setelah input kode...")
             time.sleep(5)
 
             # Cek hasil verifikasi
             if d(textContains="That code isn't valid").exists or d(textContains="incorrect").exists:
-                print("Kode tidak valid, mencoba resend...")
-                # Handle resend code
-                if d(textContains="I didn't get the code").exists:
-                    d(textContains="I didn't get the code").click()
-                    time.sleep(2)
-                    if d(textContains="Resend").exists:
-                        d(textContains="Resend").click()
-                        print("Kode baru telah diminta, menunggu...")
-                        time.sleep(15)  # Wait longer for new code
-                        continue
-                else:
-                    print("Tidak dapat melakukan resend, lanjut ke attempt berikutnya...")
-                    continue
+                print("Kode tidak valid, mencoba kode baru...")
+                continue
             else:
-                # Cek apakah masih di halaman verifikasi
-                verification_indicators = [
+                # Tunggu dan cek apakah masih di halaman verifikasi
+                time.sleep(3)
+                if not any([
                     d(textContains="confirmation").exists,
                     d(textContains="verification").exists,
-                    d(textContains="Enter").exists and d(textContains="code").exists,
-                ]
-                
-                if not any(verification_indicators):
-                    print("Verifikasi email berhasil!")
+                    d(textContains="code").exists
+                ]):
+                    print("Verifikasi berhasil!")
                     return True
                 else:
-                    print("Masih di halaman verifikasi, kemungkinan kode salah...")
+                    print("Masih di halaman verifikasi, mencoba kode baru...")
                     continue
 
-    print("Gagal verifikasi kode setelah beberapa percobaan.")
+    print("Gagal verifikasi setelah beberapa percobaan.")
     return False
 
 def inspect_ui_elements(d, filter_texts=None, max_print=20):
