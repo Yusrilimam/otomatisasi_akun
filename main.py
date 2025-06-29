@@ -420,121 +420,93 @@ def handle_existing_account_popup(d, timeout=15):
 
 def set_birthday(d, min_age=18, max_age=30):
     print("Set birthday dengan metode 'Enter age instead'...")
+    time.sleep(2)  # Tunggu halaman birthday load sempurna
 
-    # 1. Klik tombol Next (XPath)
-    xpath_next = '//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[4]/android.view.ViewGroup[3]'
-    for _ in range(10):
-        if d.xpath(xpath_next).exists:
-            d.xpath(xpath_next).click()
-            print("Tombol Next diklik pada halaman Add your birthday.")
-            time.sleep(1)
-            break
-        time.sleep(1)
-    else:
-        print("Tombol Next pada birthday tidak ditemukan!")
-        inspect_ui_elements(d)
-        return
+    # Coba klik tombol Next dengan beberapa metode
+    next_clicked = False
     
-    for _ in range(10):
-        if d(text="Next").exists:
-            print("Tombol Next ditemukan by text, mengklik...")
-            d(text="Next").click()
-            time.sleep(2)
-            return
-
-    # 2. Tunggu pop up 'Enter your real birthday' dan klik OK
-    xpath_OK = '//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[5]/android.view.ViewGroup/android.view.ViewGroup/android.view.ViewGroup/android.view.ViewGroup'
-    for _ in range(10):
-        if d.xpath(xpath_OK).exists:
-            d.xpath(xpath_OK).click()
-            print("Pop up 'Enter your real birthday' ditemukan dan tombol OK diklik.")
-            time.sleep(1)
-            break
-        time.sleep(1)
+    # 1. Coba dengan text
+    if d(text="Next").exists:
+        d(text="Next").click()
+        next_clicked = True
+    # 2. Coba dengan resource-id
+    elif d(resourceId="com.instagram.lite:id/next_button").exists:
+        d(resourceId="com.instagram.lite:id/next_button").click()
+        next_clicked = True
+    # 3. Coba dengan koordinat yang sesuai dengan tombol Next di halaman birthday
     else:
-        print("Pop up OK tidak muncul.")
-        inspect_ui_elements(d)
+        print("Mencoba klik Next dengan koordinat...")
+        d.click(450, 930)  # Koordinat tombol Next di halaman birthday
+        next_clicked = True
 
-    # 3. Tunggu tombol "Enter age instead" muncul, lalu klik (XPath)
-    xpath_enter_age = '//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[4]/android.view.View[6]'
-    for _ in range(10):
-        if d.xpath(xpath_enter_age).exists:
-            # kadang tombol tidak langsung bisa di-klik, pastikan visible dan enabled
-            try:
-                d.xpath(xpath_enter_age).click()
-                print("Tombol 'Enter age instead' diklik.")
-                time.sleep(2)
-                break
-            except Exception as e:
-                print(f"Klik xpath tombol 'Enter age instead' gagal: {e}")
+    time.sleep(2)
+
+    # Cek apakah popup "Enter your real birthday" muncul
+    if d(textContains="Enter your real birthday").exists:
+        print("Pop up 'Enter your real birthday' terdeteksi")
+        # Coba klik OK dengan beberapa metode
+        if d(text="OK").exists:
+            d(text="OK").click()
+        elif d(text="Okay").exists:
+            d(text="Okay").click()
         else:
-            # Coba klik berdasarkan text juga jika ada
-            if d(text="Enter age instead").exists:
-                d(text="Enter age instead").click()
-                print("Tombol 'Enter age instead' diklik by text.")
-                time.sleep(2)
-                break
+            # Koordinat untuk tombol OK
+            d.click(450, 640)
         time.sleep(1)
+    
+    # Cari dan klik tombol "Enter age instead"
+    enter_age_clicked = False
+    
+    # 1. Coba dengan text
+    if d(text="Enter age instead").exists:
+        print("Menemukan tombol 'Enter age instead' by text")
+        d(text="Enter age instead").click()
+        enter_age_clicked = True
+    # 2. Coba dengan contains text
+    elif d(textContains="Enter age").exists:
+        print("Menemukan tombol 'Enter age instead' by contains text")
+        d(textContains="Enter age").click()
+        enter_age_clicked = True
+    # 3. Coba dengan koordinat spesifik untuk tombol "Enter age instead"
     else:
-        print("Tombol 'Enter age instead' tidak ditemukan!")
-        inspect_ui_elements(d)
-        return
+        print("Mencoba klik 'Enter age instead' dengan koordinat...")
+        # Koordinat untuk tombol Enter age instead
+        d.click(450, 840)
+        enter_age_clicked = True
+    
+    time.sleep(2)
 
-    # 4. Isi usia di halaman "Enter your age"
-    for _ in range(10):
+    # Isi usia
+    if d(className="android.widget.MultiAutoCompleteTextView").exists:
         age_field = d(className="android.widget.MultiAutoCompleteTextView")
-        if age_field.exists:
-            age = str(random.randint(min_age, max_age))
-            age_field.click()
+        age = str(random.randint(min_age, max_age))
+        try:
+            age_field.clear_text()
             time.sleep(0.5)
-            # Clear text dengan perintah ulang
-            try:
-                age_field.clear_text()
-            except Exception:
-                pass
-            time.sleep(0.5)
-            # Gunakan set_text dan backup dengan send_keys
-            try:
-                age_field.set_text(age)
-            except Exception as e:
-                print(f"set_text error: {e}, mencoba send_keys")
-                age_field.send_keys(age)
-            print(f"Field usia diisi dengan: {age}")
-            time.sleep(1)
-            # Pastikan terisi (bisa juga verifikasi d(className="android.widget.MultiAutoCompleteTextView").get_text())
-            break
-        else:
-            # Jaga-jaga jika field belum muncul
-            print("Field usia belum muncul, retrying...")
-        time.sleep(1)
+            age_field.set_text(age)
+            print(f"Berhasil mengisi usia: {age}")
+        except Exception as e:
+            print(f"Error saat mengisi usia: {e}")
+            # Fallback menggunakan send_keys
+            d.send_keys(age)
+            print(f"Mencoba mengisi usia dengan send_keys: {age}")
     else:
         print("Field usia tidak ditemukan!")
-        inspect_ui_elements(d)
-        return
+        return False
 
-    # 5. Klik tombol Next lagi (umumnya text "Next" atau "Berikutnya" atau dengan XPath yang sama)
-    for _ in range(10):
-        if d(text="Next").exists:
-            d(text="Next").click()
-            print("Tombol Next diklik setelah isi usia.")
-            time.sleep(1)
-            break
-        elif d(text="Berikutnya").exists:
-            d(text="Berikutnya").click()
-            print("Tombol Berikutnya diklik setelah isi usia.")
-            time.sleep(1)
-            break
-        elif d.xpath(xpath_next).exists:
-            d.xpath(xpath_next).click()
-            print("Tombol Next (xpath) diklik setelah isi usia.")
-            time.sleep(1)
-            break
-        time.sleep(1)
+    time.sleep(2)
+
+    # Klik Next setelah isi usia
+    if d(text="Next").exists:
+        d(text="Next").click()
+    elif d(resourceId="com.instagram.lite:id/next_button").exists:
+        d(resourceId="com.instagram.lite:id/next_button").click()
     else:
-        print("Tombol Next/ Berikutnya tidak ditemukan setelah isi usia!")
-        inspect_ui_elements(d)
+        # Koordinat untuk tombol Next setelah isi usia
+        d.click(450, 930)
 
-    print("Birthday selesai diisi dengan metode Enter age instead.")
+    print("Proses set birthday selesai")
+    return True
 
 def check_instagram_lite_installed():
     print("Mengecek apakah Instagram Lite sudah terinstall...")
