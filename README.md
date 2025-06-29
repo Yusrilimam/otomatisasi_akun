@@ -8,7 +8,7 @@ Proyek ini bertujuan untuk mengotomatisasi proses instalasi Instagram Lite dan p
 - Logging dan error handling
 
 ## Persiapan
-1. Pastikan [Mumu Player](https://mumuplayer.com/) sudah terpasang di komputer Anda.
+1. Pastikan [Mumu Player](ldplayer.com) sudah terpasang di komputer Anda.
 2. Instal Python 3.x
 3. Jalankan perintah berikut untuk menginstall dependencies:
    ```
