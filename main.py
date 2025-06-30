@@ -33,6 +33,48 @@ def generate_random_password(length=12):
 FULLNAME = generate_random_fullname()
 PASSWORD = generate_random_password()
 
+def inspect_ui_elements(d, filter_texts=None):
+    print("\n======= UI Elements Inspector (Filtered) =======\n")
+    try:
+        dump = d.dump_hierarchy(compressed=False, pretty=True)
+        elements = d.xpath('//*').all()
+        total_elements = len(elements)
+        print(f"Total elements found: {total_elements}")
+
+        found_matching = False
+        for element in elements:
+            text = element.attrib.get('text')
+            resource_id = element.attrib.get('resource-id')
+            class_name = element.attrib.get('class')
+            bounds = element.attrib.get('bounds')
+            clickable = element.attrib.get('clickable')
+
+            display_element = False
+            if filter_texts:
+                for f_text in filter_texts:
+                    if (text and f_text.lower() in text.lower()) or \
+                       (resource_id and f_text.lower() in resource_id.lower()) or \
+                       (class_name and f_text.lower() in class_name.lower()):
+                        display_element = True
+                        found_matching = True
+                        break
+            else:
+                display_element = True # Display all if no filter
+
+            if display_element:
+                print(f"  Text: {text}")
+                print(f"  Resource ID: {resource_id}")
+                print(f"  Class Name: {class_name}")
+                print(f"  Bounds: {bounds}")
+                print(f"  Clickable: {clickable}")
+                print("-" * 20)
+
+        if filter_texts and not found_matching:
+            print("No matching elements found with the provided filters.")
+        print("\n=================================================\n")
+    except Exception as e:
+        print(f"Error inspecting UI elements: {e}")
+        
 def start_ldplayer_and_connect_adb():
     print("Menjalankan emulator LDPlayer...")
     subprocess.Popen([LDPLAYER_EXE_PATH])
@@ -346,38 +388,6 @@ def handle_email_verification(d, max_attempts=3, kode_start_time=None):
     print("Gagal verifikasi setelah beberapa percobaan.")
     return False
 
-def inspect_ui_elements(d, filter_texts=None, max_print=20):
-    print("======= UI Elements Inspector (Filtered) =======")
-    try:
-        nodes = d.xpath("//*").all()
-        print(f"Total elements found: {len(nodes)}")
-        count = 0
-        for idx, node in enumerate(nodes):
-            info = getattr(node, "attrib", {})
-            text = info.get('text', '')
-            resource_id = info.get('resource-id', '')
-            class_name = info.get('class', '')
-
-            # Tampilkan hanya elemen dengan text, atau resource-id, atau class tombol (button/view)
-            if filter_texts:
-                if not any(f.lower() in (text or '').lower() for f in filter_texts):
-                    continue
-            if not (text or resource_id or "button" in class_name.lower()):
-                continue
-            print(f"Element #{idx+1}")
-            print("  class:", class_name)
-            print("  resource-id:", resource_id)
-            print("  text:", text)
-            print("  bounds:", info.get('bounds', ''))
-            count += 1
-            print("-" * 30)
-            if count >= max_print:
-                break
-        if count == 0:
-            print("No matching elements found.")
-    except Exception as e:
-        print(f"Error saat inspect UI: {e}")
-
 def handle_existing_account_popup(d, timeout=15):
     """
     Menangani pop-up dari Instagram Lite ketika email sudah terdaftar di akun lain.
@@ -419,125 +429,137 @@ def handle_existing_account_popup(d, timeout=15):
     return False
 
 def set_birthday(d, min_age=18, max_age=30):
-    print("Set birthday dengan metode 'Enter age instead'...")
+    print("Set birthday with method 'Enter age instead'...")
     time.sleep(3)  # Tunggu halaman birthday load sempurna
 
-    def verify_birthday_page():
-        """Memastikan kita berada di halaman birthday"""
-        return d(text="Add your birthday").exists or \
-               d(textContains="Add your birthday").exists
+    def verify_birthday_page_initial():
+        """Memastikan kita berada di halaman birthday awal ('Add your birthday') menggunakan resourceId."""
+        # Kombinasi cek judul dan elemen date picker
+        title_exists = d(resourceId="com.instagram.lite:id/title_text_view", text="Add your birthday").exists
+        month_picker_exists = d(resourceId="com.instagram.lite:id/date_picker_month").exists
+        day_picker_exists = d(resourceId="com.instagram.lite:id/date_picker_day").exists
+        year_picker_exists = d(resourceId="com.instagram.lite:id/date_picker_year").exists
+        return title_exists and month_picker_exists and day_picker_exists and year_picker_exists
 
-    # Verifikasi halaman birthday
-    if not verify_birthday_page():
-        print("Tidak berada di halaman birthday!")
+    # Verifikasi halaman birthday awal
+    if not verify_birthday_page_initial():
+        print("Tidak berada di halaman 'Add your birthday'!")
+        print("Melakukan inspeksi elemen pada halaman saat ini:")
+        inspect_ui_elements(d, filter_texts=["birthday", "date_picker", "Next", "Enter age instead"])
         return False
 
-    # 1. Klik tombol Next
-    print("Langkah 1: Mengklik tombol Next biru...")
-    if d(text="Next").exists:
-        d(text="Next").click()
+    # --- LANGKAH 1: Mengklik tombol Next di halaman 'Add your birthday' ---
+    print("Langkah 1: Mengklik tombol Next di halaman 'Add your birthday'...")
+    next_button_initial = d(resourceId="com.instagram.lite:id/next_button", text="Next")
+
+    if next_button_initial.exists:
+        try:
+            next_button_initial.click()
+            print("Tombol Next (initial) berhasil diklik via resourceId & text.")
+            time.sleep(2) # Tunggu popup muncul atau halaman berubah
+        except Exception as e:
+            print(f"Gagal mengklik tombol Next (initial) via resourceId & text: {e}")
+            inspect_ui_elements(d, filter_texts=["Next"])
+            return False
     else:
-        # Koordinat tombol Next biru di bagian bawah
-        d.click(450, 930)
-    
-    # Tunggu popup muncul
-    time.sleep(2)
-    print("Menunggu popup 'Enter your real birthday'...")
-    
-    # 2. Tunggu dan handle popup
+        print("Tombol Next (initial) tidak ditemukan pada halaman 'Add your birthday'!")
+        inspect_ui_elements(d, filter_texts=["Next", "birthday"])
+        return False
+
+    # --- LANGKAH 2: Menunggu dan menangani popup 'Enter your real birthday' ---
+    print("Langkah 2: Menunggu dan menangani popup 'Enter your real birthday'...")
+    popup_title_locator = d(text="Enter your real birthday")
+    ok_button_popup_locator = d(resourceId="android:id/button1", text="OK") # Common Android OK button ID
+
     popup_handled = False
-    attempts = 0
-    while attempts < 5 and not popup_handled:
-        if d(textContains="Enter your real birthday").exists:
-            print("Langkah 2: Popup terdeteksi, mengklik OK...")
-            if d(text="OK").exists:
-                d(text="OK").click()
-            else:
-                d.click(450, 780)  # Koordinat tombol OK
-            popup_handled = True
-        else:
-            print("Menunggu popup muncul...")
-            time.sleep(1)
-            attempts += 1
-
-    if not popup_handled:
-        print("Popup tidak muncul setelah klik Next!")
-        return False
-
-    # Tunggu popup hilang dan tombol "Enter age instead" muncul
-    time.sleep(2)
-    print("Menunggu tombol 'Enter age instead' muncul...")
-
-    # 3. Klik "Enter age instead"
-    enter_age_clicked = False
-    attempts = 0
-    while attempts < 5 and not enter_age_clicked:
-        if d(text="Enter age instead").exists:
-            print("Langkah 3: Mengklik 'Enter age instead' by text")
-            d(text="Enter age instead").click()
-            enter_age_clicked = True
-        elif d(textContains="Enter age").exists:
-            print("Langkah 3: Mengklik 'Enter age instead' by contains")
-            d(textContains="Enter age").click()
-            enter_age_clicked = True
-        else:
-            print("Menunggu tombol 'Enter age instead' muncul...")
-            time.sleep(1)
-            attempts += 1
-
-    if not enter_age_clicked:
-        print("Gagal menemukan tombol 'Enter age instead'!")
-        return False
-
-    time.sleep(2)
-
-    # 4. Tunggu dan isi field usia
-    print("Menunggu field usia muncul...")
-    age_input_success = False
-    attempts = 0
-    
-    while attempts < 5 and not age_input_success:
-        if d(className="android.widget.MultiAutoCompleteTextView").exists:
-            field = d(className="android.widget.MultiAutoCompleteTextView")
-            age = str(random.randint(min_age, max_age))
+    for _ in range(5): # Coba hingga 5 kali untuk popup
+        if popup_title_locator.exists and ok_button_popup_locator.exists:
             try:
-                field.click()
-                time.sleep(0.5)
-                field.clear_text()
-                time.sleep(0.5)
-                field.set_text(age)
-                print(f"Langkah 4: Berhasil mengisi usia: {age}")
-                age_input_success = True
+                ok_button_popup_locator.click()
+                print("Popup 'Enter your real birthday' berhasil ditutup dengan mengklik OK.")
+                popup_handled = True
+                time.sleep(2) # Beri waktu popup hilang dan elemen lain muncul
+                break
             except Exception as e:
-                print(f"Error saat input usia: {e}")
-                d.send_keys(age)
-                age_input_success = True
+                print(f"Gagal mengklik tombol OK di popup: {e}")
+                inspect_ui_elements(d, filter_texts=["OK", "real birthday"]) # Inspect lagi jika error
+                return False
         else:
-            print("Menunggu field usia muncul...")
+            print("Menunggu popup 'Enter your real birthday'...")
             time.sleep(1)
-            attempts += 1
-
-    if not age_input_success:
-        print("Gagal mengisi usia!")
+    
+    if not popup_handled:
+        print("Popup 'Enter your real birthday' tidak terdeteksi atau gagal ditutup!")
+        inspect_ui_elements(d, filter_texts=["OK", "real birthday"])
         return False
 
-    time.sleep(2)
+    # --- LANGKAH 3: Klik "Enter age instead" ---
+    print("Langkah 3: Mengklik 'Enter age instead'...")
+    enter_age_instead_button = d(resourceId="com.instagram.lite:id/enter_age_instead_button", text="Enter age instead")
 
-    # 5. Klik Next final
-    print("Langkah 5: Mengklik Next final...")
-    if d(text="Next").exists:
-        d(text="Next").click()
+    if enter_age_instead_button.exists:
+        try:
+            enter_age_instead_button.click()
+            print("'Enter age instead' berhasil diklik via resourceId & text.")
+            time.sleep(2) # Tunggu halaman 'Enter your age' load
+        except Exception as e:
+            print(f"Gagal mengklik 'Enter age instead': {e}")
+            inspect_ui_elements(d, filter_texts=["Enter age instead"])
+            return False
     else:
-        d.click(450, 930)
+        print("Tombol 'Enter age instead' tidak ditemukan!")
+        inspect_ui_elements(d, filter_texts=["Enter age instead", "age"])
+        return False
 
-    # Verifikasi berhasil pindah halaman
-    time.sleep(3)
-    if not verify_birthday_page():
-        print("Berhasil menyelesaikan proses birthday!")
-        return True
-    
-    print("Gagal menyelesaikan proses birthday")
-    return False
+    # --- LANGKAH 4: Verifikasi halaman 'Enter your age' dan isi field usia ---
+    print("Langkah 4: Mengisi field usia...")
+    age_page_title_locator = d(text="Enter your age")
+    age_input_field_locator = d(resourceId="com.instagram.lite:id/text_input_edittext") # Ini common untuk EditText di Instagram Lite
+
+    if not age_page_title_locator.exists:
+        print("Tidak berada di halaman 'Enter your age'!")
+        inspect_ui_elements(d, filter_texts=["Enter your age", "age"])
+        return False
+
+    if age_input_field_locator.exists:
+        age = str(random.randint(min_age, max_age))
+        try:
+            age_input_field_locator.click() # Klik dulu untuk memastikan fokus
+            time.sleep(0.5)
+            age_input_field_locator.clear_text()
+            time.sleep(0.5)
+            age_input_field_locator.set_text(age)
+            print(f"Berhasil mengisi usia: {age}.")
+            time.sleep(2) # Biarkan teks terisi
+        except Exception as e:
+            print(f"Gagal mengisi field usia: {e}")
+            inspect_ui_elements(d, filter_texts=["age"])
+            return False
+    else:
+        print("Field usia tidak ditemukan di halaman 'Enter your age'!")
+        inspect_ui_elements(d, filter_texts=["age"])
+        return False
+
+    # --- LANGKAH 5: Klik Next final di halaman 'Enter your age' ---
+    print("Langkah 5: Mengklik Next final di halaman 'Enter your age'...")
+    final_next_button = d(resourceId="com.instagram.lite:id/next_button", text="Next")
+
+    if final_next_button.exists:
+        try:
+            final_next_button.click()
+            print("Tombol Next (final) berhasil diklik via resourceId & text.")
+            time.sleep(3) # Tunggu halaman selanjutnya load
+        except Exception as e:
+            print(f"Gagal mengklik tombol Next (final): {e}")
+            inspect_ui_elements(d, filter_texts=["Next"])
+            return False
+    else:
+        print("Tombol Next (final) tidak ditemukan di halaman 'Enter your age'!")
+        inspect_ui_elements(d, filter_texts=["Next", "age"])
+        return False
+
+    print("Proses pengisian tanggal lahir/usia selesai.")
+    return True
 
 def check_instagram_lite_installed():
     print("Mengecek apakah Instagram Lite sudah terinstall...")
