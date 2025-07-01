@@ -1,6 +1,7 @@
 import os, string
 import subprocess
 import time
+from datetime import datetime, timezone
 import uiautomator2 as u2
 import uuid
 import random
@@ -429,137 +430,151 @@ def handle_existing_account_popup(d, timeout=15):
     return False
 
 def set_birthday(d, min_age=18, max_age=30):
-    print("Set birthday with method 'Enter age instead'...")
-    time.sleep(3)  # Tunggu halaman birthday load sempurna
-
-    def verify_birthday_page_initial():
-        """Memastikan kita berada di halaman birthday awal ('Add your birthday') menggunakan resourceId."""
-        # Kombinasi cek judul dan elemen date picker
-        title_exists = d(resourceId="com.instagram.lite:id/title_text_view", text="Add your birthday").exists
-        month_picker_exists = d(resourceId="com.instagram.lite:id/date_picker_month").exists
-        day_picker_exists = d(resourceId="com.instagram.lite:id/date_picker_day").exists
-        year_picker_exists = d(resourceId="com.instagram.lite:id/date_picker_year").exists
-        return title_exists and month_picker_exists and day_picker_exists and year_picker_exists
-
-    # Verifikasi halaman birthday awal
-    if not verify_birthday_page_initial():
-        print("Tidak berada di halaman 'Add your birthday'!")
-        print("Melakukan inspeksi elemen pada halaman saat ini:")
-        inspect_ui_elements(d, filter_texts=["birthday", "date_picker", "Next", "Enter age instead"])
-        return False
-
-    # --- LANGKAH 1: Mengklik tombol Next di halaman 'Add your birthday' ---
-    print("Langkah 1: Mengklik tombol Next di halaman 'Add your birthday'...")
-    next_button_initial = d(resourceId="com.instagram.lite:id/next_button", text="Next")
-
-    if next_button_initial.exists:
+    def save_xml_to_file(d, prefix):
         try:
-            next_button_initial.click()
-            print("Tombol Next (initial) berhasil diklik via resourceId & text.")
-            time.sleep(2) # Tunggu popup muncul atau halaman berubah
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"birthday_page_{prefix}_{timestamp}.xml"
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(d.dump_hierarchy())
+            print(f"Saved page inspection to {filename}")
         except Exception as e:
-            print(f"Gagal mengklik tombol Next (initial) via resourceId & text: {e}")
-            inspect_ui_elements(d, filter_texts=["Next"])
-            return False
-    else:
-        print("Tombol Next (initial) tidak ditemukan pada halaman 'Add your birthday'!")
-        inspect_ui_elements(d, filter_texts=["Next", "birthday"])
-        return False
+            print(f"Gagal menyimpan XML: {e}")
 
-    # --- LANGKAH 2: Menunggu dan menangani popup 'Enter your real birthday' ---
-    print("Langkah 2: Menunggu dan menangani popup 'Enter your real birthday'...")
-    popup_title_locator = d(text="Enter your real birthday")
-    ok_button_popup_locator = d(resourceId="android:id/button1", text="OK") # Common Android OK button ID
+    print("\nStarting birthday setup process...")
+    time.sleep(3)
 
-    popup_handled = False
-    for _ in range(5): # Coba hingga 5 kali untuk popup
-        if popup_title_locator.exists and ok_button_popup_locator.exists:
-            try:
-                ok_button_popup_locator.click()
-                print("Popup 'Enter your real birthday' berhasil ditutup dengan mengklik OK.")
-                popup_handled = True
-                time.sleep(2) # Beri waktu popup hilang dan elemen lain muncul
-                break
-            except Exception as e:
-                print(f"Gagal mengklik tombol OK di popup: {e}")
-                inspect_ui_elements(d, filter_texts=["OK", "real birthday"]) # Inspect lagi jika error
-                return False
-        else:
-            print("Menunggu popup 'Enter your real birthday'...")
-            time.sleep(1)
+    # --- LANGKAH 1: Klik tombol Next di halaman Add your birthday ---
+    print("\nLangkah 1: Mengklik tombol Next...")
+    xpath_next = '//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[3]/android.view.ViewGroup[3]'
     
-    if not popup_handled:
-        print("Popup 'Enter your real birthday' tidak terdeteksi atau gagal ditutup!")
-        inspect_ui_elements(d, filter_texts=["OK", "real birthday"])
+    if d.xpath(xpath_next).exists:
+        d.xpath(xpath_next).click()
+        print("Tombol Next berhasil diklik")
+        time.sleep(2)
+    else:
+        print("Gagal menemukan tombol Next!")
         return False
 
-    # --- LANGKAH 3: Klik "Enter age instead" ---
-    print("Langkah 3: Mengklik 'Enter age instead'...")
-    enter_age_instead_button = d(resourceId="com.instagram.lite:id/enter_age_instead_button", text="Enter age instead")
+    # --- LANGKAH 2: Menangani popup 'Enter your real birthday' ---
+    print("\nLangkah 2: Menangani popup birthday...")
+    #save_xml_to_file(d, "before_popup")
+    time.sleep(2)
 
-    if enter_age_instead_button.exists:
+    # Klik OK di popup
+    try:
+        d.click(450, 800)  # Koordinat tengah
+        print("Klik koordinat tengah untuk popup")
+        time.sleep(1)
+        d.click(450, 850)  # Koordinat OK
+        print("Klik koordinat tombol OK")
+    except Exception as e:
+        print(f"Gagal klik popup: {e}")
+        return False
+
+    time.sleep(2)
+
+    # --- LANGKAH 3: Klik tombol "Enter age instead" ---
+    print("\nLangkah 3: Mencari dan mengklik tombol 'Enter age instead'...")
+    #save_xml_to_file(d, "after_popup")
+    
+    # Coba klik menggunakan koordinat yang tepat dari XML
+    try:
+        d.click(450, 1495)  # Titik tengah dari bounds="[354,1481][546,1510]"
+        print("Enter age instead diklik via koordinat yang tepat")
+        time.sleep(3)
+    except Exception as e:
+        print(f"Gagal klik Enter age instead via koordinat: {e}")
+        return False
+
+    # Verifikasi halaman Enter your age muncul
+    #save_xml_to_file(d, "enter_age_verification")
+    time.sleep(2)
+
+    # Cek field input
+    if not d(className="android.widget.MultiAutoCompleteTextView").exists:
+        print("Halaman Enter your age tidak terdeteksi!")
+        return False
+    
+    print("Halaman Enter your age terdeteksi")
+
+    # --- LANGKAH 4: Mengisi field age ---
+    print("\nLangkah 4: Mengisi field age...")
+    age = str(random.randint(min_age, max_age))
+    
+    input_field = d(className="android.widget.MultiAutoCompleteTextView")
+    if input_field.exists:
         try:
-            enter_age_instead_button.click()
-            print("'Enter age instead' berhasil diklik via resourceId & text.")
-            time.sleep(2) # Tunggu halaman 'Enter your age' load
+            input_field.click()
+            time.sleep(1)
+            input_field.set_text(age)
+            print(f"Berhasil mengisi usia: {age}")
         except Exception as e:
-            print(f"Gagal mengklik 'Enter age instead': {e}")
-            inspect_ui_elements(d, filter_texts=["Enter age instead"])
+            print(f"Gagal mengisi age: {e}")
             return False
     else:
-        print("Tombol 'Enter age instead' tidak ditemukan!")
-        inspect_ui_elements(d, filter_texts=["Enter age instead", "age"])
+        print("Field age tidak ditemukan!")
         return False
 
-    # --- LANGKAH 4: Verifikasi halaman 'Enter your age' dan isi field usia ---
-    print("Langkah 4: Mengisi field usia...")
-    age_page_title_locator = d(text="Enter your age")
-    age_input_field_locator = d(resourceId="com.instagram.lite:id/text_input_edittext") # Ini common untuk EditText di Instagram Lite
+    time.sleep(2)
 
-    if not age_page_title_locator.exists:
-        print("Tidak berada di halaman 'Enter your age'!")
-        inspect_ui_elements(d, filter_texts=["Enter your age", "age"])
+    # --- LANGKAH 5: Klik Next final ---
+    print("\nLangkah 5: Klik Next final...")
+    try:
+        # Menggunakan koordinat dari bounds="[30,385][870,451]"
+        d.click(450, 418)  # Titik tengah dari bounds Next button
+        print("Next final diklik via koordinat")
+        time.sleep(2)
+        
+        # Verifikasi tambahan - coba klik sekali lagi jika masih di halaman yang sama
+        if d(className="android.widget.MultiAutoCompleteTextView").exists:
+            d.click(450, 418)  # Coba klik lagi
+            print("Mencoba klik Next lagi")
+            time.sleep(2)
+    except Exception as e:
+        print(f"Gagal klik Next final: {e}")
         return False
 
-    if age_input_field_locator.exists:
-        age = str(random.randint(min_age, max_age))
-        try:
-            age_input_field_locator.click() # Klik dulu untuk memastikan fokus
-            time.sleep(0.5)
-            age_input_field_locator.clear_text()
-            time.sleep(0.5)
-            age_input_field_locator.set_text(age)
-            print(f"Berhasil mengisi usia: {age}.")
-            time.sleep(2) # Biarkan teks terisi
-        except Exception as e:
-            print(f"Gagal mengisi field usia: {e}")
-            inspect_ui_elements(d, filter_texts=["age"])
-            return False
-    else:
-        print("Field usia tidak ditemukan di halaman 'Enter your age'!")
-        inspect_ui_elements(d, filter_texts=["age"])
+    # Verifikasi proses selesai
+    time.sleep(2)
+    if d(className="android.widget.MultiAutoCompleteTextView").exists:
+        print("Masih di halaman age input!")
+        save_xml_to_file(d, "process_not_completed")
         return False
 
-    # --- LANGKAH 5: Klik Next final di halaman 'Enter your age' ---
-    print("Langkah 5: Mengklik Next final di halaman 'Enter your age'...")
-    final_next_button = d(resourceId="com.instagram.lite:id/next_button", text="Next")
-
-    if final_next_button.exists:
-        try:
-            final_next_button.click()
-            print("Tombol Next (final) berhasil diklik via resourceId & text.")
-            time.sleep(3) # Tunggu halaman selanjutnya load
-        except Exception as e:
-            print(f"Gagal mengklik tombol Next (final): {e}")
-            inspect_ui_elements(d, filter_texts=["Next"])
-            return False
-    else:
-        print("Tombol Next (final) tidak ditemukan di halaman 'Enter your age'!")
-        inspect_ui_elements(d, filter_texts=["Next", "age"])
-        return False
-
-    print("Proses pengisian tanggal lahir/usia selesai.")
+    print("Proses pengisian birthday selesai!")
     return True
+def get_utc_timestamp():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+# Fungsi untuk menyimpan hasil registrasi
+def save_registration_result(result_data, cookies=None):
+    timestamp = get_utc_timestamp()
+    filename = f"registration_result_{timestamp.replace(':', '_').replace(' ', '_')}.txt"
+    
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write("=== INSTAGRAM LITE REGISTRATION RESULT ===\n")
+            f.write(f"Registration Time (UTC): {timestamp}\n")
+            f.write(f"System User: {os.getlogin()}\n")
+            f.write("\n=== ACCOUNT DETAILS ===\n")
+            f.write(f"Status: {result_data.get('status', 'N/A')}\n")
+            f.write(f"Username: {result_data.get('username', 'N/A')}\n")
+            f.write(f"Password: {result_data.get('password', 'N/A')}\n")
+            f.write(f"Email: {result_data.get('email', 'N/A')}\n")
+            
+            if cookies:
+                f.write("\n=== COOKIES ===\n")
+                f.write(cookies)
+                
+            f.write("\n\n=== ADDITIONAL INFO ===\n")
+            f.write(f"Device: {LDPLAYER_DEVICE}\n")
+            f.write(f"Instagram Lite Package: com.instagram.lite\n")
+            
+        print(f"\nRegistration result saved to: {filename}")
+        return True
+    except Exception as e:
+        print(f"Error saving registration result: {e}")
+        return False
 
 def check_instagram_lite_installed():
     print("Mengecek apakah Instagram Lite sudah terinstall...")
@@ -580,7 +595,6 @@ def install_instagram_lite():
     print("Membuka Google Play Store...")
     d.app_start("com.android.vending")
     time.sleep(4)
-    inspect_ui_elements(d)
     print("Klik search bar di bagian atas (LDPlayer)...")
     d.click(350, 60)
     time.sleep(2)
@@ -588,7 +602,6 @@ def install_instagram_lite():
     time.sleep(3)
     d.press("enter")
     time.sleep(3)
-    inspect_ui_elements(d)
     print("Klik tombol Install di panel kanan (detail aplikasi, via XPath)...")
     xpath_install = '//androidx.compose.ui.platform.ComposeView/android.view.View/android.view.View[2]/android.view.View/android.view.View[1]/android.view.View[5]/android.widget.Button[2]'
     if d.xpath(xpath_install).exists:
@@ -599,7 +612,6 @@ def install_instagram_lite():
         print("Tombol Install diklik via text (fallback).")
     else:
         print("Tombol Install tidak ditemukan! Gagal install Instagram Lite.")
-        inspect_ui_elements(d)
         return False
     
     print("Menunggu proses install selesai (tombol Buka muncul)...")
@@ -629,15 +641,23 @@ def install_instagram_lite():
             return True
         time.sleep(4)
     print("Timeout: Gagal mendeteksi bahwa Instagram Lite sudah terinstall.")
-    inspect_ui_elements(d)
     return False
 
 def register_instagram_lite(email, fullname, password):
+    def save_xml_to_file(d, prefix):
+        try:
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"{prefix}_{timestamp}.xml"
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(d.dump_hierarchy())
+            print(f"Saved XML inspection to {filename}")
+        except Exception as e:
+            print(f"Gagal menyimpan XML: {e}")
     d = u2.connect(LDPLAYER_DEVICE)
     print("Membuka aplikasi Instagram Lite...")
     d.app_start("com.instagram.lite")
     time.sleep(5)
-    handle_permission_popup(d, timeout=10)
+    handle_permission_popup(d, timeout=7)
 
     print("Inspect elemen setelah aplikasi dibuka:")
     inspect_ui_elements(d, filter_texts=["create", "account", "button"])
@@ -647,7 +667,7 @@ def register_instagram_lite(email, fullname, password):
     if d.xpath(xpath_create_new_account).exists:
         d.xpath(xpath_create_new_account).click()
         print("Tombol 'Create new account' berhasil diklik via XPath.")
-        time.sleep(5)
+        time.sleep(3)
     else:
         print("Tombol 'Create new account' tidak ditemukan!")
         inspect_ui_elements(d, filter_texts=["create", "account", "button"])
@@ -658,7 +678,7 @@ def register_instagram_lite(email, fullname, password):
     if d.xpath(xpath_signup_email).exists:
         d.xpath(xpath_signup_email).click()
         print("Tombol 'Sign up with email' berhasil diklik via XPath.")
-        time.sleep(5)
+        time.sleep(3)
     else:
         found = False
         for _ in range(5):
@@ -763,7 +783,6 @@ def register_instagram_lite(email, fullname, password):
         time.sleep(1)
     else:
         print("Field nama lengkap/password tidak ditemukan! Cek UI.")
-        inspect_ui_elements(d)
         return
 
     print("Klik Next untuk melanjutkan registrasi...")
@@ -781,22 +800,41 @@ def register_instagram_lite(email, fullname, password):
     print("Masuk ke halaman birthday, mengisi tanggal lahir...")
     set_birthday(d)
     
-    xpath_next_ready = '//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[4]/android.view.ViewGroup[6]'
-    for _ in range(10):
-        if d.xpath(xpath_next_ready).exists:
-            d.xpath(xpath_next_ready).click()
-            print("Tombol Next pada halaman 'account is almost ready' berhasil diklik via xpath.")
+    print("\nMenangani halaman 'your account is almost ready'...")
+    time.sleep(3)
+    save_xml_to_file(d, "your_account_is_almost_ready")
+    
+    try:
+        # Klik langsung ke tombol Next yang berwarna biru (kotak besar)
+        next_button = d.xpath('//android.view.ViewGroup[@bounds="[18,1462][882,1510]"]')
+        if next_button.exists:
+            print("Menemukan tombol Next berwarna biru")
+            # Klik di bagian tengah-atas tombol untuk menghindari area "Change username"
+            bounds = next_button.info.get('bounds', {})
+            center_x = (bounds['left'] + bounds['right']) // 2  # sekitar 450
+            # Gunakan posisi y yang lebih ke atas (1/3 dari tinggi tombol)
+            click_y = bounds['top'] + (bounds['bottom'] - bounds['top']) // 3  # sekitar 1478
+            
+            print(f"Mengklik tombol Next di koordinat: ({center_x}, {click_y})")
+            d.click(center_x, click_y)
             time.sleep(2)
-            break
-        elif d(text="Next").exists:
-            d(text="Next").click()
-            print("Tombol Next diklik via text.")
-            time.sleep(2)
-            break
-        time.sleep(1)
-    else:
-        print("Tombol Next pada halaman 'account is almost ready' tidak ditemukan!")
-        inspect_ui_elements(d)
+        else:
+            # Fallback: gunakan koordinat yang sudah dipastikan tepat di tombol biru
+            print("Menggunakan koordinat spesifik untuk tombol Next")
+            d.click(450, 1478)  # Y coordinate diubah ke posisi yang lebih atas
+            
+        # Verifikasi hasil klik
+        time.sleep(2)
+        if "your account is almost ready" in d.dump_hierarchy().lower():
+            print("Halaman belum berganti, mencoba sekali lagi...")
+            # Coba klik lagi dengan koordinat yang sedikit berbeda
+            d.click(450, 1470)  # Coba lebih ke atas lagi
+            
+    except Exception as e:
+        print(f"Error saat mencoba klik tombol Next: {e}")
+        # Simpan XML untuk debugging
+        save_xml_to_file(d, "next_button_error")
+    
     time.sleep(3)
     
     print("Cek apakah muncul halaman 'Add a profile photo'...")
@@ -817,7 +855,6 @@ def register_instagram_lite(email, fullname, password):
         time.sleep(1)
     else:
         print("Tombol Skip pada halaman Add a profile photo tidak ditemukan!")
-        inspect_ui_elements(d)
     
     xpath_skip_contacts = '//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[3]/android.view.ViewGroup[3]'
     for _ in range(10):
@@ -834,10 +871,44 @@ def register_instagram_lite(email, fullname, password):
         time.sleep(1)
     else:
         print("Tombol Skip pada halaman sync kontak tidak ditemukan!")
-        inspect_ui_elements(d)
-        
-    print("Registrasi Instagram Lite selesai! Jika masih ada langkah tambahan, lakukan manual.")
-    return
+    
+
+    print("\n=== REGISTRASI BERHASIL ===")
+    # Get registration result
+    print("\nCollecting registration results...")
+    registration_result = {
+        'status': 'success' if next_clicked else 'warning',
+        'username': fullname,
+        'password': password,
+        'email': email,
+        'registration_time': get_utc_timestamp(),
+        'system_user': os.getlogin()
+    }
+
+    # Get cookies
+    try:
+        cookies = d.shell(['cat', '/data/data/com.instagram.lite/app_webview/Cookies']).output
+        print("\nSuccessfully retrieved cookies")
+    except Exception as e:
+        print(f"Failed to get cookies: {e}")
+        cookies = None
+
+    # Save and display results
+    save_registration_result(registration_result, cookies)
+    
+    print("\n=== REGISTRATION COMPLETED ===")
+    print(f"Status: {registration_result['status']}")
+    print(f"Username: {registration_result['username']}")
+    print(f"Password: {registration_result['password']}")
+    print(f"Email: {registration_result['email']}")
+    print(f"Registration Time (UTC): {registration_result['registration_time']}")
+    print(f"System User: {registration_result['system_user']}")
+    
+    if cookies:
+        print("\n=== COOKIES RETRIEVED ===")
+        print(cookies)
+
+    return registration_result
 
 def main():
     start_ldplayer_and_connect_adb()
@@ -858,4 +929,15 @@ def main():
             print("Automasi install Instagram Lite gagal, proses dihentikan.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        result = main()
+        if isinstance(result, dict):
+            print("\n=== FINAL RESULTS ===")
+            print(f"Registration Status: {result.get('status', 'N/A')}")
+            print(f"Username: {result.get('username', 'N/A')}")
+            print(f"Password: {result.get('password', 'N/A')}")
+            print(f"Email: {result.get('email', 'N/A')}")
+            print(f"Registration Time (UTC): {result.get('registration_time', 'N/A')}")
+            print(f"System User: {result.get('system_user', 'N/A')}")
+    except Exception as e:
+        print(f"\nError in main execution: {e}")
