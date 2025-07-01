@@ -14,8 +14,6 @@ LDPLAYER_DEVICE = "emulator-5554"
 
 # Data akun yang ingin diregistrasikan (ganti sesuai kebutuhan)
 EMAIL = "otomatisregis@gmail.com"
-#EMAIL_PASSWORD = "hpxifkmjcxzmjrrq"#
-
 
 # Konfigurasi IMAP untuk Gmail
 #IMAP_SERVER = "imap.gmail.com"
@@ -546,7 +544,6 @@ def set_birthday(d, min_age=18, max_age=30):
 def get_utc_timestamp():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-# Fungsi untuk menyimpan hasil registrasi
 def save_registration_result(result_data, cookies=None):
     timestamp = get_utc_timestamp()
     filename = f"registration_result_{timestamp.replace(':', '_').replace(' ', '_')}.txt"
@@ -656,8 +653,8 @@ def register_instagram_lite(email, fullname, password):
     d = u2.connect(LDPLAYER_DEVICE)
     print("Membuka aplikasi Instagram Lite...")
     d.app_start("com.instagram.lite")
-    time.sleep(5)
-    handle_permission_popup(d, timeout=7)
+    time.sleep(10)
+    handle_permission_popup(d, timeout=10)
 
     print("Inspect elemen setelah aplikasi dibuka:")
     inspect_ui_elements(d, filter_texts=["create", "account", "button"])
@@ -667,7 +664,7 @@ def register_instagram_lite(email, fullname, password):
     if d.xpath(xpath_create_new_account).exists:
         d.xpath(xpath_create_new_account).click()
         print("Tombol 'Create new account' berhasil diklik via XPath.")
-        time.sleep(3)
+        time.sleep(5)
     else:
         print("Tombol 'Create new account' tidak ditemukan!")
         inspect_ui_elements(d, filter_texts=["create", "account", "button"])
@@ -678,7 +675,7 @@ def register_instagram_lite(email, fullname, password):
     if d.xpath(xpath_signup_email).exists:
         d.xpath(xpath_signup_email).click()
         print("Tombol 'Sign up with email' berhasil diklik via XPath.")
-        time.sleep(3)
+        time.sleep(5)
     else:
         found = False
         for _ in range(5):
@@ -802,60 +799,43 @@ def register_instagram_lite(email, fullname, password):
     
     print("\nMenangani halaman 'your account is almost ready'...")
     time.sleep(3)
-    save_xml_to_file(d, "your_account_is_almost_ready")
-    
+
     try:
-        # Klik langsung ke tombol Next yang berwarna biru (kotak besar)
-        next_button = d.xpath('//android.view.ViewGroup[@bounds="[18,1462][882,1510]"]')
-        if next_button.exists:
-            print("Menemukan tombol Next berwarna biru")
-            # Klik di bagian tengah-atas tombol untuk menghindari area "Change username"
-            bounds = next_button.info.get('bounds', {})
-            center_x = (bounds['left'] + bounds['right']) // 2  # sekitar 450
-            # Gunakan posisi y yang lebih ke atas (1/3 dari tinggi tombol)
-            click_y = bounds['top'] + (bounds['bottom'] - bounds['top']) // 3  # sekitar 1478
-            
-            print(f"Mengklik tombol Next di koordinat: ({center_x}, {click_y})")
-            d.click(center_x, click_y)
-            time.sleep(2)
+        print("Mencoba klik tombol Next (area atas)...")
+        # Target the "Next" button using text match with clickable check
+        if d(text="Next", clickable=True).exists:
+            d(text="Next", clickable=True).click()
+            print("Tombol Next berhasil diklik berdasarkan text dan clickable.")
         else:
-            # Fallback: gunakan koordinat yang sudah dipastikan tepat di tombol biru
-            print("Menggunakan koordinat spesifik untuk tombol Next")
-            d.click(450, 1478)  # Y coordinate diubah ke posisi yang lebih atas
-            
-        # Verifikasi hasil klik
-        time.sleep(2)
-        if "your account is almost ready" in d.dump_hierarchy().lower():
-            print("Halaman belum berganti, mencoba sekali lagi...")
-            # Coba klik lagi dengan koordinat yang sedikit berbeda
-            d.click(450, 1470)  # Coba lebih ke atas lagi
-            
+            # Fallback to coordinates near the center of the "Next" button (adjust based on screenshot)
+            d.click(450, 1463)  # Adjusted to target the blue "Next" button
+            time.sleep(2)
+            if "your account is almost ready" in d.dump_hierarchy().lower():
+                print("Masih di halaman yang sama, mencoba posisi alternatif...")
+                click_positions = [
+                    (350, 1463),  # Sisi kiri atas
+                    (550, 1463),  # Sisi kanan atas
+                    (450, 1480),  # Sedikit lebih bawah untuk memastikan tombol
+                ]
+                for x, y in click_positions:
+                    print(f"Mencoba klik di koordinat ({x}, {y})")
+                    d.click(x, y)
+                    time.sleep(2)
+                    if "your account is almost ready" not in d.dump_hierarchy().lower():
+                        print(f"Berhasil! Klik di ({x}, {y}) berhasil")
+                        break
+        # Final verification
+        if "your account is almost ready" not in d.dump_hierarchy().lower():
+            print("Berhasil melanjutkan dari halaman 'your account is almost ready'")
+        else:
+            print("Gagal melanjutkan, masih di halaman yang sama")
+            save_xml_to_file(d, "still_on_account_ready")
+
     except Exception as e:
-        print(f"Error saat mencoba klik tombol Next: {e}")
-        # Simpan XML untuk debugging
-        save_xml_to_file(d, "next_button_error")
+        print(f"Error saat mencoba mengklik tombol Next: {e}")
+        save_xml_to_file(d, "error_clicking_next")
     
-    time.sleep(3)
-    
-    print("Cek apakah muncul halaman 'Add a profile photo'...")
-    for _ in range(10):
-        # Coba klik tombol Skip by text
-        if d(text="Skip").exists:
-            print("Tombol Skip pada halaman Add a profile photo ditemukan by text. Mengklik...")
-            d(text="Skip").click()
-            time.sleep(2)
-            break
-        # Coba klik tombol Skip by XPath (dari user)
-        elif d.xpath('//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[4]/android.view.ViewGroup[3]').exists:
-            print("Tombol Skip pada halaman Add a profile photo ditemukan by XPath. Mengklik...")
-            d.xpath('//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[4]/android.view.ViewGroup[3]').click()
-            time.sleep(2)
-            break
-        print("Tombol Skip belum muncul di halaman Add a profile photo, retrying...")
-        time.sleep(1)
-    else:
-        print("Tombol Skip pada halaman Add a profile photo tidak ditemukan!")
-    
+    save_xml_to_file(d, "halaman selanjutnya")
     xpath_skip_contacts = '//android.widget.FrameLayout[@resource-id="com.instagram.lite:id/main_layout"]/android.widget.FrameLayout/android.view.ViewGroup[3]/android.view.ViewGroup[3]'
     for _ in range(10):
         if d.xpath(xpath_skip_contacts).exists:
